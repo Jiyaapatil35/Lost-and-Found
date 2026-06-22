@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb_container
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: always
+    networks:
+      - mern_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend_container
+    ports:
+      - "5000:5000"
+    environment:
+      # We override the .env MONGODB_URI here to use the container name
+      - MONGODB_URI=mongodb://mongodb:27017/lost-and-found
+      - PORT=5000
+      - JWT_SECRET=my_super_secret_jwt_key_123
+      - BASE_URL=http://16.192.57.191:5000
+    depends_on:
+      - mongodb
+    volumes:
+      - backend_uploads:/usr/src/app/uploads
+    restart: always
+    networks:
+      - mern_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend_container
+    ports:
+      - "5173:5173"
+    environment:
+      # This points to the EC2 IP because the browser executes this code on the client machine
+      - VITE_API_URL=http://16.192.57.191:5000/api
+    depends_on:
+      - backend
+    restart: always
+    networks:
+      - mern_network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_container
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    depends_on:
+      - backend
+    restart: always
+    networks:
+      - mern_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_container
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: always
+    networks:
+      - mern_network
+
+volumes:
+  mongodb_data:
+  prometheus_data:
+  grafana_data:
+  backend_uploads:
+
+networks:
+  mern_network:
+    driver: bridge
